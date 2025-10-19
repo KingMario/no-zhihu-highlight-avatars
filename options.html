@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>No Zhihu Highlight Avatars Settings</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; padding: 16px; }
+      h1 { font-size: 18px; margin: 0 0 12px; }
+      ul { padding-left: 20px; }
+      li { margin: 6px 0; display: flex; align-items: center; gap: 8px; }
+      input[type="text"] { width: 520px; }
+      small { color: #666; }
+      button { cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <h1>Blocked Avatar URLs</h1>
+    <div>
+      <input id="newUrl" type="text" placeholder="Paste avatar URL to add manually" />
+      <button id="addBtn">Add</button>
+      <div><small>Right-click an image → "Block this avatar" to add quickly</small></div>
+    </div>
+    <ul id="list"></ul>
+    <script>
+        const STORAGE_KEY = 'blockedAvatars';
+
+        function normalizeAvatarUrl(input) {
+          try {
+            const u = new URL(input);
+            const path = u.pathname || '';
+            const last = path.split('/').filter(Boolean).pop() || path;
+            return last.toLowerCase();
+          } catch (_) {
+            const s = String(input || '')
+              .split('?')[0]
+              .split('#')[0];
+            const last = s.split('/').filter(Boolean).pop() || s;
+            return last.toLowerCase();
+          }
+        }
+
+      async function load() {
+        const data = await chrome.storage.local.get(STORAGE_KEY);
+        const list = Array.isArray(data[STORAGE_KEY]) ? data[STORAGE_KEY] : [];
+        render(list);
+      }
+
+      function render(urls) {
+        const ul = document.getElementById('list');
+        ul.innerHTML = '';
+        const seen = new Set();
+        urls.forEach((u) => {
+          const key = normalizeAvatarUrl(u);
+          if (seen.has(key)) return;
+          seen.add(key);
+          const li = document.createElement('li');
+          const span = document.createElement('span');
+          span.textContent = u;
+          const btn = document.createElement('button');
+          btn.textContent = 'Remove';
+          btn.addEventListener('click', async () => {
+            await chrome.runtime.sendMessage({ type: 'unblock-avatar', url: u }).catch(() => {});
+            load();
+          });
+          li.appendChild(btn);
+          li.appendChild(span);
+          ul.appendChild(li);
+        });
+      }
+
+      document.getElementById('addBtn').addEventListener('click', async () => {
+        const input = document.getElementById('newUrl');
+        const val = input.value.trim();
+        if (!val) return;
+        // Ask background to save normalized key by simulating a block event
+        await chrome.runtime.sendMessage({ type: 'unblock-avatar', url: '' }).catch(() => {});
+        const key = normalizeAvatarUrl(val);
+        const data = await chrome.storage.local.get(STORAGE_KEY);
+        const arr = new Set(Array.isArray(data[STORAGE_KEY]) ? data[STORAGE_KEY] : []);
+        arr.add(key);
+        await chrome.storage.local.set({ [STORAGE_KEY]: Array.from(arr) });
+        input.value = '';
+        load();
+      });
+
+      load();
+    </script>
+  </body>
+  </html>
+
+
